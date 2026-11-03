@@ -190,6 +190,17 @@ DEVELOPER_DIR=/Applications/Xcode.app/Contents/Developer \
   時期を推測できてしまう(ユーザーの希望、2026-11-03)。最初は共有ファイルの名前に書き出し日時を入れていたので、日時を名前に入れない。
 - 透過のある PNG を JPEG にすると透明部分が黒くなるので、元が PNG なら形式の既定を PNG にしている。
 
+## README のスクリーンショット
+
+- `docs/screenshot.png`(幅 598px に縮小)。写真は `design/sample-label.swift` で作る**架空の宅配伝票**(名前・住所・電話番号はすべて架空)。
+  公開リポジトリなので、ユーザーの写真や実在の住所・会社は使わない(2026-11-03)。
+- 撮り方: シミュレータでアプリを消して入れ直し(設定を初期値に戻す)、`xcrun simctl ui <device> appearance light`、
+  `xcrun simctl status_bar <device> override --time 9:41 ...` のあと、DEBUG 版の起動口で写真と線を渡す:
+  `SIMCTL_CHILD_PIXWASH_OPEN=label.jpg SIMCTL_CHILD_PIXWASH_DEMO_STROKES="x1,y1,x2,y2,太さ;..." xcrun simctl launch ...`
+  (座標・太さは長辺 = 1 の単位。隠し方は今の設定。伝票は少し傾けてあるので、線の y を x に合わせてずらす)。
+  線の端は丸いので、始点を文字の左端より太さの半分ほど右にしないと、枠や段ボールまでモザイクになる。
+  撮った画像は `sips -Z 1300` で縮める。
+
 ## アイコン
 
 `design/icon.svg`(青 `#1A73E8` に白い 3×3 のモザイクタイル)から

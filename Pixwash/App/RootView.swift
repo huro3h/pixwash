@@ -54,6 +54,16 @@ struct RootView: View {
                let data = FileManager.default.contents(atPath: path),
                let photo = try? await ImageDecoder.decode(data) {
                 model.open(photo)
+                // README のスクリーンショット用に、なぞった線も渡せる。
+                // 「x1,y1,x2,y2,太さ」(長辺 = 1 の単位)を ; で区切る。隠し方は今の設定を使う
+                if let demo = ProcessInfo.processInfo.environment["PIXWASH_DEMO_STROKES"] {
+                    model.strokes = demo.split(separator: ";").compactMap { item in
+                        let v = item.split(separator: ",").compactMap { Double($0) }
+                        guard v.count == 5 else { return nil }
+                        return MosaicStroke(points: [CGPoint(x: v[0], y: v[1]), CGPoint(x: v[2], y: v[3])],
+                                            width: v[4], effect: model.effect)
+                    }
+                }
             }
             #endif
         }
