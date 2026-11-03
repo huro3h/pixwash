@@ -33,4 +33,7 @@ open Pixwash.xcodeproj
 
 Xcode で接続中の iPhone を選んで Run する。Personal Team の署名は **7日で切れる**ので、切れたら同じ手順で入れ直す。
 
+手で入れ直す代わりに、同じ作者の [ios-reinstall](https://github.com/huro3h/ios-reinstall) も使える。
+iPhone を Mac に USB でつなぐと、期限が近いアプリを最新のリリース(git のタグ)から作り直して自動で入れ直す macOS 用の常駐ツールで、毎日つなげば署名の期限が毎日7日先に延びる。
+
 `Pixwash.xcodeproj` は `project.yml` から生成するので git 管理していない。ファイルを足したり設定を変えたりしたら `xcodegen generate` をやり直す。
