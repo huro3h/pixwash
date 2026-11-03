@@ -20,6 +20,10 @@ struct RootView: View {
                 }
                 .navigationBarTitleDisplayMode(.inline)
                 .toolbar {
+                    // 署名(Personal Team)の期限。切れると起動できなくなるので、入れ直す目安に出す
+                    ToolbarItem(placement: .principal) {
+                        ProvisioningExpiryLabel()
+                    }
                     // 写真を選ぶ前は、写真の場所の「写真を選ぶ」から選ぶ
                     if model.photo != nil {
                         ToolbarItem(placement: .topBarLeading) {

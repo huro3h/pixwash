@@ -57,6 +57,11 @@ DEVELOPER_DIR=/Applications/Xcode.app/Contents/Developer \
   隠し方・強さ・サイズ・メタデータの設定は引き継ぐ(形式だけは元の写真に合わせて JPEG / PNG を選び直す)。
 - 加工済み画像・書き出しは時間がかかるので、終わったときに写真が選び直されていたら捨てる(`LoadedPhoto.id` で比べる)。
 
+- **署名の期限の表示**(2026-11-03): ヘッダーの真ん中に「期限 11/10・あと6日」を出す(`Support/ProvisioningExpiry.swift`)。
+  アプリに同梱される `embedded.mobileprovision` の `ExpirationDate` を読む(CMS の中の plist は平文なので `<?xml`〜`</plist>` を切り出す)。
+  シミュレータには同梱されないので出ない。**aozora と pixwash に同じファイルを置いている。直すときは両方直す。**
+  期限の自動延長は別プロジェクトの ios-reinstall(USB でつなぐと、残り6日未満なら最新のタグから作り直して入れ直す)。
+
 ## 拡大と塗りの操作(ZoomableCanvas)
 
 - **1本指で塗り、2本指で拡大・移動**(ユーザーと相談して決めた、2026-11-03)。モード切り替えのボタンは置かない
