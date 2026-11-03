@@ -55,12 +55,29 @@ DEVELOPER_DIR=/Applications/Xcode.app/Contents/Developer \
   写真の場所が「写真を選ぶ」の `PhotosPicker` になり、下の操作部分も先に設定できる。選んだ後は左上のボタンで選び直す。
 - そのため `EditorModel` は1つを使い続け、`photo` は後から `open(_:)` で入る。選び直すと線・加工済み画像・書き出し結果は消えるが、
   隠し方・強さ・サイズ・メタデータの設定は引き継ぐ(形式だけは元の写真に合わせて JPEG / PNG を選び直す)。
+- **設定は端末に保存する**(`Models/EditorPreferences.swift`、ユーザーの希望、2026-11-03)。隠し方・強さ・太さ・サイズの方式と値・
+  JPEG の画質・メタデータの削除を、`EditorModel` の各プロパティの `didSet` で変えるたびに UserDefaults(キー `editorPreferences`、JSON)へ書き、
+  `EditorModel.init` で読む。形式(JPEG / PNG)は写真に合わせて選び直すので保存しない。
+  読み込みは項目ごと(`init(from:)` で1項目ずつ `try?`)。項目を足し引きしても、ほかの保存済みの値を初期値に戻さないため。
+  設定の項目を足すときは `EditorPreferences` と `EditorModel` の init・`savePreferences` の3か所を直す。
+  シミュレータでの確認は `simctl spawn <device> defaults write com.huro3h.pixwash editorPreferences -data <JSON の16進>` で書いてから起動する。
+  保存された内容はアプリを終了させてから、データコンテナの `Library/Preferences/<bundle id>.plist` を読む(動いている間は書き出されていないことがある)。
 - 加工済み画像・書き出しは時間がかかるので、終わったときに写真が選び直されていたら捨てる(`LoadedPhoto.id` で比べる)。
 
 - **署名の期限の表示**(2026-11-03): ヘッダーの真ん中に、期限の日時「11/10 22:05」と残り「6日23時間」を小さく2行で出す(`Support/ProvisioningExpiry.swift`。「期限」などの言葉は付けない)。
   アプリに同梱される `embedded.mobileprovision` の `ExpirationDate` を読む(CMS の中の plist は平文なので `<?xml`〜`</plist>` を切り出す)。
   シミュレータには同梱されないので出ない。**aozora と pixwash に同じファイルを置いている。直すときは両方直す。**
   期限の自動延長は別プロジェクトの ios-reinstall(USB でつなぐと、残り6日未満なら最新のタグから作り直して入れ直す)。
+
+## 下の切り替え(PanelSwitcher)
+
+- モザイク・サイズ・メタデータの切り替えは、標準の segmented Picker ではなく `EditorView.swift` の `PanelSwitcher`(見た目は似せている)。
+  標準のものは項目ごとに色を変えられないため。メタデータを残す設定のときは、気付けるようにメタデータのタブをオレンジにして
+  「!」を付ける(ユーザーの希望、2026-11-03。たまに Exif を残してモザイクだけ入れるため)。サイズ表示の行の右端も、
+  削除するときは緑の `location.slash`、残すときはオレンジの `location.fill`。
+- シミュレータで設定の値を変えて確かめるとき、`simctl spawn … defaults write` はアプリのデータコンテナの plist とは別の場所に書く
+  (アプリの plist がまだないときだけ効いて見える)。plist を直接書き換えても、`cfprefsd` が内容を覚えていると読み直されない。
+  確実なのはアプリを消して入れ直すこと。
 
 ## 拡大と塗りの操作(ZoomableCanvas)
 
@@ -118,6 +135,35 @@ DEVELOPER_DIR=/Applications/Xcode.app/Contents/Developer \
 
 - 切り替えの並びは「元のまま / 長辺 / 割合」で、既定は長辺 1920px(ユーザーの希望、2026-11-03)。並びは `ResizeMode` の case の順。
 - 長辺は拡大しない(元より大きい値なら元のまま。プリセットのボタンも元の長辺以上は押せない)。
+
+## HDR を保つ(2026-11-03)
+
+- 動機: メタデータを消すと暗くなると言われた。原因はメタデータではなく、iPhone の HDR 写真の**ゲインマップ(明るさの補助画像)**を
+  書き出しで捨てていたこと(補助データはメタデータとは別で、以前はどちらの設定でも失われていた)。
+- 流れ(`ImageExporter.export`): 元の写真にゲインマップがあり(`LoadedPhoto.hasHDR`、ISO / Apple 形式どちらか)、「HDR を保つ」がオンで、
+  形式が JPEG なら、**普通の画像(SDR)は元の写真のもの**(`photo.full`)に、**HDR の画像**は `ImageDecoder.hdrImage`
+  (`kCGImageSourceDecodeToHDR` + サムネイル API。向きの反映・書き出す大きさで読む)に、それぞれ同じ縮小・合成をかけ、
+  `CIContext.jpegRepresentation(of: SDR, options: [.hdrImage: HDR])` で書く。Core Image が2つの比からゲインマップを作る
+  (ISO 形式と Apple の古い形式の両方が、元と同じ解像度で入る。そのぶんファイルは大きくなる)。
+  隠した部分はゲインマップにも反映される(どちらの画像にもモザイクをかけてから比を取るので、補助画像側に元の絵が残らない)。
+- **最初の方式は `kCGImageDestinationEncodeToISOGainmap` に HDR の画像だけを渡していた**。普通の画像を ImageIO がトーンマッピングで作り直すため、
+  ユーザーの実際の写真で普通の画像が元より約3割暗く・淡くなり、HDR で見ても彩度が約5%落ちた(「鮮やかさが失われている」と言われた)。
+  元の写真の普通の画像を使う今の方式で、普通の画像は元と一致し、HDR 表示の明るさ・彩度も元とほぼ同じになった(2026-11-03)。
+- `jpegRepresentation` は CIImage の `properties` をそのままメタデータにする。`settingProperties` で、削除するなら向きだけ、残すなら
+  `carriedMetadata` を渡す(`ImageExporter.metadata`)。
+- **HDR で読むと PQ / HLG(ITU-R 2100)の色空間・10bit で返る**。最初は「拡張範囲の色空間か」だけで HDR を判定していて、
+  HDR ではないとみなして普通の画像に戻していた。`ImageExporter.isHDR` は `CGColorSpaceUsesITUR_2100TF` も見る。
+  合成・縮小は 16bit 浮動小数・`extendedLinearDisplayP3` の CGContext で行い(1.0 を超える値を切り捨てない)、
+  描き直すと headroom(どこまで明るいか)が消えるので `CGImageCreateCopyWithContentHeadroom` で元の値を付け直す。
+- **縮小してから合成する**順番にした(HDR は1画素が倍のメモリを使うので、元の大きさで合成しない)。SDR も同じ順番。
+- メタデータ: 元の写真の Exif(古い形式の HDR の数値が入る MakerApple を含む)は写さない。明るさの数値は各ゲインマップ自身の
+  XMP(`HDRToneMap:*`)に書かれる。削除オンで書き出したファイルの本体・両方のゲインマップの XMP・ファイル全体の文字列とも、
+  GPS・日時・機種がないことを確認した。
+- 色の比べ方: 元と書き出し後を同じ大きさで線形 P3 の float に描き、普通の画像(`DecodeToSDR`)と HDR(`DecodeToHDR`)のそれぞれで
+  平均の輝度・彩度(HSV の S)・上位1%の輝度を比べる。目で見る画像は SDR なので、HDR の違いは数値で見る。
+- 確認のしかた: iPhone の HDR 写真がなくても、Mac で拡張範囲の画像(1.0 超)を作り、`EncodeToISOGainmap` で JPEG にすれば
+  HDR の写真の代わりになる。書き出したものを `DecodeToHDR` で読んで `contentHeadroom` と画素の値(1.0 超か)を見る。
+  `CIPixellate` はブロックの平均ではなく中心の色を使うので、隠した部分の値はブロックごとに一定になる(平均値にはならない)。
 
 ## メタデータ
 

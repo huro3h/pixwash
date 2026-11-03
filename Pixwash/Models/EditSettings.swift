@@ -29,7 +29,7 @@ nonisolated struct MosaicStroke: Equatable, Sendable {
     }
 }
 
-nonisolated enum ConcealKind: String, CaseIterable, Identifiable, Hashable, Sendable {
+nonisolated enum ConcealKind: String, CaseIterable, Identifiable, Hashable, Codable, Sendable {
     case mosaic, blur
 
     var id: Self { self }
@@ -93,7 +93,7 @@ nonisolated struct PixelSize: Equatable, Sendable {
     var label: String { "\(width) × \(height)" }
 }
 
-nonisolated enum ResizeMode: String, CaseIterable, Identifiable, Sendable {
+nonisolated enum ResizeMode: String, CaseIterable, Identifiable, Codable, Sendable {
     // 並び順がそのまま画面の切り替えの順になる。よく使う長辺を真ん中に置く
     case original, longEdge, percent
 
@@ -133,6 +133,9 @@ nonisolated enum OutputFormat: String, CaseIterable, Identifiable, Sendable {
         case .png: "png"
         }
     }
+
+    /// HDR のゲインマップを入れられるか(PNG は入れられない)
+    var supportsGainMap: Bool { self == .jpeg }
 }
 
 /// 書き出しの設定(サイズ・形式・メタデータ)。
@@ -144,6 +147,8 @@ nonisolated struct ExportSettings: Equatable, Sendable {
     var format: OutputFormat = .jpeg
     var jpegQuality: Double = 0.9
     var stripMetadata = true
+    /// 元の写真が HDR なら、HDR のまま書き出す(ゲインマップを作り直して付ける)
+    var keepsHDR = true
 
     /// 書き出すピクセル数。長辺指定は拡大しない(元より大きい値なら元のまま)。
     func outputSize(for size: PixelSize) -> PixelSize {

@@ -14,6 +14,8 @@ nonisolated struct LoadedPhoto: Identifiable, Sendable {
     let preview: CGImage
     let metadata: PhotoMetadata
     let type: UTType?
+    /// HDR の明るさの補助画像(ゲインマップ)を持っているか
+    let hasHDR: Bool
 
     var size: PixelSize { PixelSize(full) }
 }
@@ -46,8 +48,27 @@ nonisolated enum ImageDecoder {
             full: full,
             preview: preview,
             metadata: PhotoMetadata(properties: properties),
-            type: CGImageSourceGetType(source).flatMap { UTType($0 as String) }
+            type: CGImageSourceGetType(source).flatMap { UTType($0 as String) },
+            hasHDR: [kCGImageAuxiliaryDataTypeISOGainMap, kCGImageAuxiliaryDataTypeHDRGainMap].contains {
+                CGImageSourceCopyAuxiliaryDataInfoAtIndex(source, 0, $0) != nil
+            }
         )
+    }
+
+    /// ゲインマップを当てた HDR の画像(拡張範囲の色空間、1.0 を超える明るさを持つ)を、向きを反映して読む。
+    /// 書き出す大きさで読めば、元の大きさの HDR 画像(普通の画像の倍のメモリ)を作らずに済む
+    static func hdrImage(_ data: Data, maxPixelSize: Int) -> CGImage? {
+        guard let source = CGImageSourceCreateWithData(data as CFData, nil) else { return nil }
+        let options: [CFString: Any] = [
+            kCGImageSourceCreateThumbnailFromImageAlways: true,
+            kCGImageSourceCreateThumbnailWithTransform: true,
+            kCGImageSourceThumbnailMaxPixelSize: maxPixelSize,
+            kCGImageSourceShouldCacheImmediately: true,
+            kCGImageSourceDecodeRequest: kCGImageSourceDecodeToHDR,
+        ]
+        guard let image = CGImageSourceCreateThumbnailAtIndex(source, 0, options as CFDictionary),
+              ImageExporter.isHDR(image) else { return nil }
+        return image
     }
 
     /// サムネイル作成の API を使うと、Orientation を画素に焼き込んだ画像が得られる。

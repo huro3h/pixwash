@@ -2,7 +2,6 @@ import SwiftUI
 
 struct MosaicPanel: View {
     @Bindable var model: EditorModel
-    @Binding var brushSize: Double
 
     var body: some View {
         Form {
@@ -12,7 +11,7 @@ struct MosaicPanel: View {
                 }
                 .pickerStyle(.segmented)
                 LabeledContent("太さ") {
-                    Slider(value: $brushSize, in: 8...80)
+                    Slider(value: $model.brushSize, in: 8...80)
                 }
                 let strengthLabel = model.concealKind == .mosaic ? "粗さ" : "強さ"
                 LabeledContent(strengthLabel) {

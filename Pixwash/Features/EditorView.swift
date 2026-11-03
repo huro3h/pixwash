@@ -15,7 +15,6 @@ struct EditorView: View {
     }
 
     @State private var panel: Panel = .mosaic
-    @State private var brushSize: Double = 28
     @State private var isSaving = false
     @State private var toast: String?
     @State private var errorMessage: String?
@@ -28,7 +27,7 @@ struct EditorView: View {
                         image: photo.preview,
                         concealed: model.concealedPreviews,
                         strokes: $model.strokes,
-                        brushSize: brushSize,
+                        brushSize: model.brushSize,
                         effect: model.effect,
                         isDrawingEnabled: panel == .mosaic
                     )
@@ -58,18 +57,15 @@ struct EditorView: View {
                 // 写真がないときも高さを保ち、選んだときに下の操作部分が動かないようにする
                 .frame(minHeight: 28)
 
-            Picker("編集", selection: $panel) {
-                ForEach(Panel.allCases) { Text($0.rawValue).tag($0) }
-            }
-            .pickerStyle(.segmented)
-            .padding(.horizontal)
+            PanelSwitcher(selection: $panel, keepsMetadata: !model.settings.stripMetadata)
+                .padding(.horizontal)
 
             Group {
                 switch panel {
                 case .mosaic:
-                    MosaicPanel(model: model, brushSize: $brushSize)
+                    MosaicPanel(model: model)
                 case .size:
-                    ResizePanel(settings: $model.settings, original: model.photo?.size)
+                    ResizePanel(settings: $model.settings, original: model.photo?.size, hasHDR: model.photo?.hasHDR)
                 case .metadata:
                     MetadataPanel(metadata: model.photo?.metadata, stripMetadata: $model.settings.stripMetadata)
                 }
@@ -144,6 +140,49 @@ struct EditorView: View {
     }
 }
 
+/// モザイク・サイズ・メタデータの切り替え。標準の segmented Picker は項目ごとに色を変えられないので自前で描く。
+/// メタデータを残す設定のときは、気付けるようにメタデータのタブをオレンジにする(ユーザーの希望、2026-11-03)
+private struct PanelSwitcher: View {
+    @Binding var selection: EditorView.Panel
+    let keepsMetadata: Bool
+
+    var body: some View {
+        HStack(spacing: 0) {
+            ForEach(EditorView.Panel.allCases) { panel in
+                let warns = panel == .metadata && keepsMetadata
+                Button {
+                    selection = panel
+                } label: {
+                    HStack(spacing: 4) {
+                        if warns {
+                            Image(systemName: "exclamationmark.circle.fill")
+                                .imageScale(.small)
+                        }
+                        Text(panel.rawValue)
+                    }
+                    .font(.subheadline.weight(selection == panel ? .semibold : .regular))
+                    .foregroundStyle(warns ? AnyShapeStyle(.orange) : AnyShapeStyle(.primary))
+                    .frame(maxWidth: .infinity, minHeight: 32)
+                    .background {
+                        if selection == panel {
+                            Capsule()
+                                .fill(Color(uiColor: .systemBackground))
+                                .shadow(color: .black.opacity(0.12), radius: 2, y: 1)
+                        }
+                    }
+                    .contentShape(.capsule)
+                }
+                .buttonStyle(.plain)
+                .accessibilityAddTraits(selection == panel ? .isSelected : [])
+                .accessibilityHint(warns ? "メタデータを残す設定です" : "")
+            }
+        }
+        .padding(3)
+        .background(Color(uiColor: .tertiarySystemFill), in: .capsule)
+        .animation(.snappy(duration: 0.2), value: selection)
+    }
+}
+
 /// 写真を選び直したときにも、同じ設定のまま作り直すためのキー
 private struct EffectPreviewKey: Equatable {
     let photo: UUID?
@@ -183,6 +222,10 @@ private struct OutputSummary: View {
                 Image(systemName: "location.slash")
                     .foregroundStyle(.green)
                     .accessibilityLabel("メタデータを削除")
+            } else {
+                Image(systemName: "location.fill")
+                    .foregroundStyle(.orange)
+                    .accessibilityLabel("メタデータを残す")
             }
         }
         .font(.caption.monospacedDigit())

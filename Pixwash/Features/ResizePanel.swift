@@ -4,6 +4,8 @@ struct ResizePanel: View {
     @Binding var settings: ExportSettings
     /// 元の写真のサイズ(写真を選ぶ前は nil)
     let original: PixelSize?
+    /// 元の写真が HDR か(写真を選ぶ前は nil)
+    let hasHDR: Bool?
 
     private static let longEdgePresets = [720, 1080, 1280, 1920, 2560, 3840]
 
@@ -54,6 +56,17 @@ struct ResizePanel: View {
                 if settings.format == .jpeg {
                     LabeledContent("画質 \(Int(settings.jpegQuality * 100))") {
                         Slider(value: $settings.jpegQuality, in: 0.3...1, step: 0.05)
+                    }
+                }
+                Toggle("HDR を保つ", isOn: $settings.keepsHDR)
+            } footer: {
+                if settings.keepsHDR {
+                    if !settings.format.supportsGainMap {
+                        Text("PNG では HDR を保てません。HDR の明るさを保つには JPEG にしてください。")
+                    } else if hasHDR == false {
+                        Text("この写真には HDR の情報がありません。")
+                    } else {
+                        Text("HDR の写真は、明るさの情報を作り直して付けます。位置情報などのメタデータとは別で、メタデータを削除しても明るさは保たれます。")
                     }
                 }
             }

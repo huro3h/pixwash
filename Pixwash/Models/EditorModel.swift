@@ -4,14 +4,46 @@ import Observation
 
 /// 編集の状態。写真を選ぶ前から画面を出すので、写真は後から入る。
 /// 写真を選び直すと線などは消えるが、隠し方・サイズなどの設定は引き継ぐ。
+/// 設定は変えるたびに保存し、次にアプリを開いたときも使う(`EditorPreferences`)。
 @Observable
 final class EditorModel {
     private(set) var photo: LoadedPhoto?
     var strokes: [MosaicStroke] = []
     /// これからなぞる線の隠し方と強さ(0〜1)。実際の大きさは `effect`
-    var concealKind: ConcealKind = .mosaic
-    var strength: Double = 0.3
-    var settings = ExportSettings()
+    var concealKind: ConcealKind { didSet { savePreferences() } }
+    var strength: Double { didSet { savePreferences() } }
+    /// ペンの太さ(画面上の pt)
+    var brushSize: Double { didSet { savePreferences() } }
+    var settings: ExportSettings { didSet { savePreferences() } }
+
+    init() {
+        let preferences = EditorPreferences.load()
+        concealKind = preferences.concealKind
+        strength = preferences.strength
+        brushSize = preferences.brushSize
+        var settings = ExportSettings()
+        settings.resizeMode = preferences.resizeMode
+        settings.percent = preferences.percent
+        settings.longEdge = preferences.longEdge
+        settings.jpegQuality = preferences.jpegQuality
+        settings.stripMetadata = preferences.stripMetadata
+        settings.keepsHDR = preferences.keepsHDR
+        self.settings = settings
+    }
+
+    private func savePreferences() {
+        var preferences = EditorPreferences()
+        preferences.concealKind = concealKind
+        preferences.strength = strength
+        preferences.brushSize = brushSize
+        preferences.resizeMode = settings.resizeMode
+        preferences.percent = settings.percent
+        preferences.longEdge = settings.longEdge
+        preferences.jpegQuality = settings.jpegQuality
+        preferences.stripMetadata = settings.stripMetadata
+        preferences.keepsHDR = settings.keepsHDR
+        preferences.save()
+    }
 
     /// 表示用の加工済み画像。隠し方(`effect`)ごとに作って持っておく
     private(set) var concealedPreviews: [ConcealEffect: CGImage] = [:]

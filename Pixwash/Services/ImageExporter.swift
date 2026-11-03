@@ -37,23 +37,37 @@ nonisolated enum ImageExporter {
         conceal(image, effect: effect)
     }
 
+    /// 縮小してからモザイクをかける(HDR の画像は1画素が普通の倍のメモリを使うので、元の大きさで合成しない)。
+    /// モザイクの粗さ・線の太さは長辺に対する割合なので、順番を変えても見た目はほぼ同じ。
     @concurrent
     static func export(_ photo: LoadedPhoto, key: ExportKey) async throws -> ExportResult {
-        var image = photo.full
-        if !key.strokes.isEmpty {
-            guard let composed = compose(base: image, strokes: key.strokes) else {
-                throw Failure.renderFailed
-            }
-            image = composed
+        let target = key.settings.outputSize(for: photo.size)
+        // 普通の画像(SDR)は、元の写真に入っているものを使う(カメラが鮮やかさなどを仕上げたもの)
+        let sdr = try edited(photo.full, to: target, strokes: key.strokes)
+        let keepsHDR = key.settings.keepsHDR && photo.hasHDR && key.settings.format.supportsGainMap
+        let data: Data
+        if keepsHDR, let decoded = ImageDecoder.hdrImage(photo.data, maxPixelSize: target.longEdge) {
+            // HDR の画像にも同じ縮小・モザイクをかけ、普通の画像との比からゲインマップを作る
+            let hdr = try edited(decoded, to: target, strokes: key.strokes)
+            data = try encodeHDR(sdr: sdr, hdr: hdr, settings: key.settings, sourceData: photo.data)
+        } else {
+            data = try encode(sdr, settings: key.settings, sourceData: photo.data)
         }
-        let target = key.settings.outputSize(for: PixelSize(image))
+        let url = try write(data, fileExtension: key.settings.format.fileExtension)
+        return ExportResult(data: data, size: PixelSize(sdr), fileURL: url)
+    }
+
+    private static func edited(_ image: CGImage, to target: PixelSize, strokes: [MosaicStroke]) throws -> CGImage {
+        var image = image
         if target != PixelSize(image) {
             guard let resized = resize(image, to: target) else { throw Failure.renderFailed }
             image = resized
         }
-        let data = try encode(image, settings: key.settings, sourceData: photo.data)
-        let url = try write(data, fileExtension: key.settings.format.fileExtension)
-        return ExportResult(data: data, size: PixelSize(image), fileURL: url)
+        if !strokes.isEmpty {
+            guard let composed = compose(base: image, strokes: strokes) else { throw Failure.renderFailed }
+            image = composed
+        }
+        return image
     }
 
     static func clearExportDirectory() {
@@ -82,8 +96,10 @@ nonisolated enum ImageExporter {
             output = filter.outputImage
         }
         guard let output = output?.cropped(to: input.extent) else { return nil }
-        return ciContext.createCGImage(output, from: input.extent, format: .RGBA8,
-                                       colorSpace: drawableColorSpace(of: image))
+        // HDR は 1.0 を超える明るさを保つため、16bit 浮動小数で作る
+        let concealed = ciContext.createCGImage(output, from: input.extent, format: isHDR(image) ? .RGBAh : .RGBA8,
+                                                colorSpace: drawableColorSpace(of: image))
+        return concealed.map { preservingHeadroom(of: image, in: $0) }
     }
 
     /// なぞった部分だけ加工済みの画像を重ねる。隠し方が同じで続いている線ごとに、その隠し方の画像を切り抜いて重ねる。
@@ -103,7 +119,7 @@ nonisolated enum ImageExporter {
             context.draw(mosaic, in: rect)
             context.restoreGState()
         }
-        return context.makeImage()
+        return context.makeImage().map { preservingHeadroom(of: base, in: $0) }
     }
 
     /// 線をグレースケールの画像に白で描く(白の部分がモザイク/ぼかしになる)。
@@ -128,21 +144,48 @@ nonisolated enum ImageExporter {
         guard let context = makeContext(width: size.width, height: size.height, like: image) else { return nil }
         context.interpolationQuality = .high
         context.draw(image, in: CGRect(x: 0, y: 0, width: size.width, height: size.height))
-        return context.makeImage()
+        return context.makeImage().map { preservingHeadroom(of: image, in: $0) }
     }
 
     private static func makeContext(width: Int, height: Int, like image: CGImage) -> CGContext? {
-        CGContext(data: nil, width: width, height: height, bitsPerComponent: 8, bytesPerRow: 0,
-                  space: drawableColorSpace(of: image),
-                  bitmapInfo: CGImageAlphaInfo.premultipliedLast.rawValue)
+        if isHDR(image) {
+            // 1.0 を超える値を切り捨てない、16bit 浮動小数・拡張範囲の色空間で描く
+            return CGContext(data: nil, width: width, height: height, bitsPerComponent: 16, bytesPerRow: 0,
+                             space: drawableColorSpace(of: image),
+                             bitmapInfo: CGImageAlphaInfo.premultipliedLast.rawValue
+                                 | CGBitmapInfo.floatComponents.rawValue
+                                 | CGImageByteOrderInfo.order16Little.rawValue)
+        }
+        return CGContext(data: nil, width: width, height: height, bitsPerComponent: 8, bytesPerRow: 0,
+                         space: drawableColorSpace(of: image),
+                         bitmapInfo: CGImageAlphaInfo.premultipliedLast.rawValue)
     }
 
-    /// 写真の色空間(Display P3 など)を保つ。RGB 以外(グレースケール・パレット)は sRGB に寄せる
+    /// 写真の色空間(Display P3 など)を保つ。RGB 以外(グレースケール・パレット)は sRGB に寄せる。
+    /// HDR は拡張範囲の Display P3(線形)で扱う
     private static func drawableColorSpace(of image: CGImage) -> CGColorSpace {
+        if isHDR(image) {
+            return CGColorSpace(name: CGColorSpace.extendedLinearDisplayP3)!
+        }
         if let space = image.colorSpace, space.model == .rgb, space.supportsOutput {
             return space
         }
         return CGColorSpace(name: CGColorSpace.sRGB)!
+    }
+
+    /// HDR として読み込んだ画像か。`kCGImageSourceDecodeToHDR` で読むと PQ / HLG(ITU-R 2100)の色空間・10bit で返り、
+    /// こちらで描き直したものは拡張範囲の色空間になる。どちらも 1.0 を超える明るさを持てる
+    static func isHDR(_ image: CGImage) -> Bool {
+        guard let space = image.colorSpace else { return false }
+        return CGColorSpaceUsesExtendedRange(space) || CGColorSpaceUsesITUR_2100TF(space)
+    }
+
+    /// 描き直した画像には「どこまで明るいか」(headroom)が付かないので、元の画像の値を付け直す。
+    /// 付いていないと、書き出すときにゲインマップの強さが決められない
+    private static func preservingHeadroom(of source: CGImage, in image: CGImage) -> CGImage {
+        let headroom = source.contentHeadroom
+        guard isHDR(image), headroom >= 1 else { return image }
+        return CGImageCreateCopyWithContentHeadroom(headroom, image) ?? image
     }
 
     // MARK: - エンコード
@@ -153,12 +196,7 @@ nonisolated enum ImageExporter {
             output as CFMutableData, settings.format.utType.identifier as CFString, 1, nil
         ) else { throw Failure.encodeFailed }
 
-        var properties: [CFString: Any] = [:]
-        if !settings.stripMetadata {
-            properties = carriedMetadata(from: sourceData, size: PixelSize(image))
-        }
-        // 画素はすでに正しい向きに焼き込んであるので、向きは常に「そのまま」
-        properties[kCGImagePropertyOrientation] = 1
+        var properties = metadata(for: image, settings: settings, sourceData: sourceData)
         if settings.format == .jpeg {
             properties[kCGImageDestinationLossyCompressionQuality] = settings.jpegQuality
         }
@@ -166,6 +204,35 @@ nonisolated enum ImageExporter {
         CGImageDestinationAddImage(destination, image, properties as CFDictionary)
         guard CGImageDestinationFinalize(destination) else { throw Failure.encodeFailed }
         return output as Data
+    }
+
+    /// 普通の画像(SDR)に、HDR の画像との比から作ったゲインマップを付けて JPEG にする。
+    /// 最初は `kCGImageDestinationEncodeToISOGainmap` で HDR の画像だけを渡していたが、普通の画像を ImageIO が作り直すため、
+    /// 実際の写真で元より約3割暗く・淡くなった(HDR で見ても淡い)。普通の画像は元の写真のものを使うことにした(2026-11-03)
+    private static func encodeHDR(sdr: CGImage, hdr: CGImage, settings: ExportSettings, sourceData: Data) throws -> Data {
+        // CIImage の properties がそのままファイルのメタデータになる。ここで渡したもの以外は書かれない
+        let properties = metadata(for: sdr, settings: settings, sourceData: sourceData)
+        let base = CIImage(cgImage: sdr).settingProperties(properties as [AnyHashable: Any])
+        let options: [CIImageRepresentationOption: Any] = [
+            .hdrImage: CIImage(cgImage: hdr),
+            CIImageRepresentationOption(rawValue: kCGImageDestinationLossyCompressionQuality as String): settings.jpegQuality,
+        ]
+        guard let colorSpace = sdr.colorSpace,
+              let data = ciContext.jpegRepresentation(of: base, colorSpace: colorSpace, options: options) else {
+            throw Failure.encodeFailed
+        }
+        return data
+    }
+
+    /// 書き込むメタデータ。削除する設定なら向き(常に「そのまま」)だけ
+    private static func metadata(for image: CGImage, settings: ExportSettings, sourceData: Data) -> [CFString: Any] {
+        var properties: [CFString: Any] = [:]
+        if !settings.stripMetadata {
+            properties = carriedMetadata(from: sourceData, size: PixelSize(image))
+        }
+        // 画素はすでに正しい向きに焼き込んであるので、向きは常に「そのまま」
+        properties[kCGImagePropertyOrientation] = 1
+        return properties
     }
 
     /// メタデータを残す設定のとき、元画像から引き継ぐ項目。画素数と向きは書き出し後の値に直す。
