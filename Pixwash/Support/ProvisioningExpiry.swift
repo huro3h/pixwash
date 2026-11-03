@@ -18,25 +18,39 @@ enum ProvisioningExpiry {
     }()
 }
 
-/// ヘッダーの真ん中に小さく出す「期限 11/10・あと6日」。残りが少なくなると色を変える
+/// ヘッダーの真ん中に小さく2行で出す。1行目が期限の日時「11/10 22:05」、2行目が残り「6日23時間」。
+/// 自分が分かればよいので「期限」などの言葉は付けない(ユーザーの希望、2026-11-03)。残りが少なくなると色を変える
 struct ProvisioningExpiryLabel: View {
     var body: some View {
         if let date = ProvisioningExpiry.date {
             TimelineView(.periodic(from: .now, by: 60)) { context in
                 let remaining = date.timeIntervalSince(context.date)
-                Text("期限 \(date.formatted(.dateTime.month(.defaultDigits).day()))・\(Self.remainingText(remaining))")
-                    .font(.caption2.monospacedDigit())
-                    .foregroundStyle(remaining < 86_400 ? AnyShapeStyle(.red)
-                                     : remaining < 2 * 86_400 ? AnyShapeStyle(.orange)
-                                     : AnyShapeStyle(.secondary))
+                VStack(spacing: 0) {
+                    Text(Self.dateFormatter.string(from: date))
+                    Text(Self.remainingText(remaining))
+                }
+                .font(.caption2.monospacedDigit())
+                .foregroundStyle(remaining < 86_400 ? AnyShapeStyle(.red)
+                                 : remaining < 2 * 86_400 ? AnyShapeStyle(.orange)
+                                 : AnyShapeStyle(.secondary))
             }
+            .accessibilityElement(children: .combine)
             .accessibilityLabel("アプリの署名の期限")
         }
     }
 
+    /// 端末の言語・地域の設定によっては「11/10, 10:05」(12時間表記で午前・午後なし)になるので、書式を固定する
+    private static let dateFormatter: DateFormatter = {
+        let formatter = DateFormatter()
+        formatter.locale = Locale(identifier: "en_US_POSIX")
+        formatter.dateFormat = "M/d HH:mm"
+        return formatter
+    }()
+
     private static func remainingText(_ remaining: TimeInterval) -> String {
         if remaining <= 0 { return "期限切れ" }
-        if remaining < 86_400 { return "あと\(max(1, Int(remaining / 3600)))時間" }
-        return "あと\(Int(remaining / 86_400))日"
+        let hours = Int(remaining / 3600)
+        if hours < 24 { return "\(max(1, hours))時間" }
+        return "\(hours / 24)日\(hours % 24)時間"
     }
 }
