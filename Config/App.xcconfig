@@ -1,0 +1,6 @@
+// 追跡する設定。アカウント固有の値は Local.xcconfig(git 管理外)で上書きする。
+// 雛形は Local.xcconfig.example。
+PRODUCT_BUNDLE_IDENTIFIER = local.pixwash.app
+DEVELOPMENT_TEAM =
+
+#include? "Local.xcconfig"

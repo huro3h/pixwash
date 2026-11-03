@@ -1,0 +1,12 @@
+# project.yml から XcodeGen で生成する
+Pixwash.xcodeproj/
+Pixwash/Info.plist
+
+# アカウント固有の署名設定。雛形は Config/Local.xcconfig.example
+Config/Local.xcconfig
+
+build/
+DerivedData/
+*.xcuserstate
+xcuserdata/
+.DS_Store

@@ -1,0 +1,7 @@
+// Local.xcconfig にコピーして値を埋める(Local.xcconfig は git 管理外)。
+//
+// DEVELOPMENT_TEAM: Xcode > Settings > Accounts で Apple ID を追加したときにできる
+//   Personal Team の ID(英数字10桁)。
+// PRODUCT_BUNDLE_IDENTIFIER: Personal Team では他人と重複できないので、自分のものにする。
+DEVELOPMENT_TEAM = XXXXXXXXXX
+PRODUCT_BUNDLE_IDENTIFIER = com.example.pixwash

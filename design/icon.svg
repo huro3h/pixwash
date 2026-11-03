@@ -1,0 +1,15 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 1024 1024" width="1024" height="1024">
+  <!-- Pixwash: 青一色の上に、右下へ向かって粗くなる白いモザイクのタイル。角の丸みは iOS が付ける -->
+  <rect width="1024" height="1024" fill="#1A73E8"/>
+  <g fill="#fff">
+    <rect x="232" y="232" width="160" height="160" rx="24"/>
+    <rect x="432" y="232" width="160" height="160" rx="24" opacity="0.55"/>
+    <rect x="632" y="232" width="160" height="160" rx="24"/>
+    <rect x="232" y="432" width="160" height="160" rx="24" opacity="0.55"/>
+    <rect x="432" y="432" width="160" height="160" rx="24"/>
+    <rect x="632" y="432" width="160" height="160" rx="24" opacity="0.55"/>
+    <rect x="232" y="632" width="160" height="160" rx="24"/>
+    <rect x="432" y="632" width="160" height="160" rx="24" opacity="0.55"/>
+    <rect x="632" y="632" width="160" height="160" rx="24"/>
+  </g>
+</svg>
