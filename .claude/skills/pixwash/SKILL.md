@@ -19,6 +19,10 @@ description: Pixwash(写真のモザイク・サイズ変更・メタデータ�
   `PHPhotoLibrary.requestAuthorization(for: .addOnly)`。Info.plist には `NSPhotoLibraryAddUsageDescription` だけ。
 - Swift 6 + `SWIFT_DEFAULT_ACTOR_ISOLATION = MainActor`。画像処理側の型・関数は **`nonisolated` を付ける**
   (付けないと MainActor になり、`@concurrent` の関数から使えない)。
+  - `PhotosPicker { ラベル }` のラベルは MainActor の外で作られる。中で `@State` や MainActor のプロパティを読むと警告になる
+    (aozora の `ProfileEditView` で出た、2026-11-06)。今の `RootView`・`EditorView` のラベルは警告が出ていないが、読むものを足して警告が出たら
+    `Button` + `.photosPicker(isPresented:selection:matching:preferredItemEncoding:)` にする。
+  - 差分ビルドでは警告が出ないことがあるので、警告を確かめるときは別の `-derivedDataPath` でクリーンビルドする(`projects-workspace` のルール1.7)。
 
 ## ビルドと確認
 
